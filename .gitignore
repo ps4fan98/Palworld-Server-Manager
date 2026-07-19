@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.idea/
+artifacts/
+*.user
+*.suo
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.zip

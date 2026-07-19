@@ -1,0 +1,27 @@
+@page "/server"
+@inject Microsoft.Extensions.Options.IOptionsMonitor<PalworldServerManager.Core.Options.PalworldServerOptions> Options
+
+<PageTitle>Server</PageTitle>
+
+<h1>Server installation</h1>
+<p class="lead">
+    Milestone 1 reads the server path from configuration. An import and
+    installation wizard will replace this page in a later milestone.
+</p>
+
+<div class="settings-list">
+    <div>
+        <span>Installation directory</span>
+        <code>@Options.CurrentValue.InstallDirectory</code>
+    </div>
+
+    <div>
+        <span>Executable</span>
+        <code>@Options.CurrentValue.ExecutableRelativePath</code>
+    </div>
+
+    <div>
+        <span>Startup arguments</span>
+        <code>@Options.CurrentValue.StartupArguments</code>
+    </div>
+</div>

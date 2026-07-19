@@ -1,0 +1,248 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IPalworldProcessService ProcessService
+@inject IAuditWriter AuditWriter
+@inject IJSRuntime JavaScript
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Server dashboard</h1>
+        <p>Local process control and health visibility.</p>
+    </div>
+
+    <button class="button secondary" @onclick="RefreshAsync">
+        Refresh
+    </button>
+</div>
+
+@if (_status is null)
+{
+    <div class="panel">Loading server status…</div>
+}
+else
+{
+    <section class="status-hero">
+        <div>
+            <div class="eyebrow">PALWORLD SERVER</div>
+            <div class="status-line">
+                <span class="status-dot @(_status.IsRunning ? "online" : "offline")"></span>
+                <strong>@(_status.IsRunning ? "Online" : "Offline")</strong>
+            </div>
+            <div class="status-path">@_status.ExecutablePath</div>
+        </div>
+
+        <div class="actions">
+            <button class="button primary"
+                    disabled="@(_status.IsRunning || _operationInProgress)"
+                    @onclick="StartServerAsync">
+                Start server
+            </button>
+
+            <button class="button danger"
+                    disabled="@(!_status.IsRunning || _operationInProgress)"
+                    @onclick="ForceStopServerAsync">
+                Force stop
+            </button>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_operationMessage))
+    {
+        <div class="operation-message @(_operationSucceeded ? "success" : "failure")">
+            @_operationMessage
+        </div>
+    }
+
+    <section class="metric-grid">
+        <article class="metric">
+            <span>Process ID</span>
+            <strong>@(_status.ProcessId?.ToString() ?? "—")</strong>
+        </article>
+
+        <article class="metric">
+            <span>Uptime</span>
+            <strong>@FormatUptime(_status.Uptime)</strong>
+        </article>
+
+        <article class="metric">
+            <span>Executable</span>
+            <strong>@(_status.ExecutableExists ? "Detected" : "Missing")</strong>
+        </article>
+
+        <article class="metric">
+            <span>Observed</span>
+            <strong>@_status.ObservedAtUtc.ToLocalTime().ToString("T")</strong>
+        </article>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Recent process output</h2>
+                <p>Only output from a Palworld process launched by this manager is captured.</p>
+            </div>
+        </div>
+
+        @if (_logs.Count == 0)
+        {
+            <div class="empty-state">
+                No captured process output yet.
+            </div>
+        }
+        else
+        {
+            <div class="log-viewer">
+                @foreach (var line in _logs)
+                {
+                    <div class="log-line">
+                        <span class="log-time">@line.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span class="log-stream">@line.Stream</span>
+                        <span>@line.Message</span>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="warning-panel">
+        <strong>Milestone 1 safety notice</strong>
+        <p>
+            Force stop terminates the process tree and can interrupt a world save.
+            Graceful save and shutdown will replace this as the normal stop workflow
+            when Palworld REST API integration is added.
+        </p>
+    </section>
+}
+
+@code {
+    private readonly CancellationTokenSource _pageCancellation = new();
+    private ServerRuntimeStatus? _status;
+    private IReadOnlyList<ServerLogLine> _logs = [];
+    private bool _operationInProgress;
+    private bool _operationSucceeded;
+    private string? _operationMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        _ = PollAsync(_pageCancellation.Token);
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _status = await ProcessService.GetStatusAsync(_pageCancellation.Token);
+        _logs = await ProcessService.GetRecentLogsAsync(
+            150,
+            _pageCancellation.Token);
+    }
+
+    private async Task StartServerAsync()
+    {
+        _operationInProgress = true;
+
+        try
+        {
+            var result =
+                await ProcessService.StartAsync(_pageCancellation.Token);
+
+            _operationSucceeded = result.Success;
+            _operationMessage = result.Message;
+
+            await AuditWriter.WriteAsync(
+                "ui.server.start",
+                result.Success ? "success" : "failure",
+                result.Message,
+                cancellationToken: _pageCancellation.Token);
+
+            await RefreshAsync();
+        }
+        finally
+        {
+            _operationInProgress = false;
+        }
+    }
+
+    private async Task ForceStopServerAsync()
+    {
+        var confirmed = await JavaScript.InvokeAsync<bool>(
+            "confirm",
+            "Force stopping can interrupt an active world save. Continue?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _operationInProgress = true;
+
+        try
+        {
+            var result =
+                await ProcessService.ForceStopAsync(_pageCancellation.Token);
+
+            _operationSucceeded = result.Success;
+            _operationMessage = result.Message;
+
+            await AuditWriter.WriteAsync(
+                "ui.server.force-stop",
+                result.Success ? "success" : "failure",
+                result.Message,
+                cancellationToken: _pageCancellation.Token);
+
+            await RefreshAsync();
+        }
+        finally
+        {
+            _operationInProgress = false;
+        }
+    }
+
+    private static string FormatUptime(TimeSpan? uptime)
+    {
+        if (uptime is null)
+        {
+            return "—";
+        }
+
+        if (uptime.Value.TotalDays >= 1)
+        {
+            return $"{(int)uptime.Value.TotalDays}d {uptime.Value.Hours}h";
+        }
+
+        if (uptime.Value.TotalHours >= 1)
+        {
+            return $"{(int)uptime.Value.TotalHours}h {uptime.Value.Minutes}m";
+        }
+
+        return $"{Math.Max(0, uptime.Value.Minutes)}m";
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _pageCancellation.Cancel();
+        _pageCancellation.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

@@ -1,0 +1,61 @@
+.brand {
+    height: 94px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #26313d;
+}
+
+.brand-mark {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: #65c9a5;
+    color: #0b1515;
+    font-weight: 900;
+    font-size: 1.25rem;
+}
+
+.brand-title {
+    font-weight: 800;
+    letter-spacing: .1em;
+}
+
+.brand-subtitle {
+    color: #8194a8;
+    font-size: .68rem;
+    letter-spacing: .12em;
+}
+
+nav {
+    padding: 18px 12px;
+}
+
+nav ::deep a {
+    display: block;
+    margin-bottom: 6px;
+    padding: 12px 14px;
+    color: #9eb0c2;
+    text-decoration: none;
+    border-radius: 9px;
+    font-weight: 600;
+}
+
+nav ::deep a:hover {
+    background: #1a2530;
+    color: white;
+}
+
+nav ::deep a.active {
+    background: #20382f;
+    color: #8fe0b5;
+}
+
+.nav-footer {
+    padding: 18px 26px;
+    color: #64788c;
+    font-size: .75rem;
+}

@@ -1,0 +1,70 @@
+.app-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.sidebar {
+    background: #111820;
+    border-right: 1px solid #26313d;
+}
+
+main {
+    min-width: 0;
+}
+
+.topbar {
+    min-height: 68px;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #151d26;
+    border-bottom: 1px solid #26313d;
+}
+
+.version {
+    margin-left: 10px;
+    color: #8fa3b8;
+    font-size: .85rem;
+    font-weight: 500;
+}
+
+.safety-label {
+    padding: 7px 10px;
+    border: 1px solid #3f8f6a;
+    border-radius: 999px;
+    color: #8fe0b5;
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.content {
+    padding: 30px;
+}
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: auto 0 0 0;
+    padding: 12px 20px;
+    background: #7e261f;
+    color: white;
+    z-index: 1000;
+}
+
+@media (max-width: 860px) {
+    .app-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid #26313d;
+    }
+
+    .content {
+        padding: 20px;
+    }
+}

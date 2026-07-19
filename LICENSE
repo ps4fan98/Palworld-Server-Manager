@@ -1,0 +1,9 @@
+Palworld Server Manager
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+This project is intended to be released under the GNU Affero General Public
+License, version 3 or any later version.
+
+Before publishing the repository, replace this notice with the complete
+AGPL-3.0-or-later license text from:
+https://www.gnu.org/licenses/agpl-3.0.txt

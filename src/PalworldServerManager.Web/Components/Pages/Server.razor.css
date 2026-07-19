@@ -1,0 +1,38 @@
+.lead {
+    color: #91a4b7;
+    max-width: 780px;
+}
+
+.settings-list {
+    margin-top: 24px;
+    display: grid;
+    gap: 12px;
+    max-width: 900px;
+}
+
+.settings-list > div {
+    padding: 18px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 20px;
+    background: #17212b;
+    border: 1px solid #263442;
+    border-radius: 10px;
+}
+
+.settings-list span {
+    color: #91a4b7;
+    font-weight: 700;
+}
+
+.settings-list code {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 700px) {
+    .settings-list > div {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}

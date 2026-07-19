@@ -1,0 +1,27 @@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <NavMenu />
+    </aside>
+
+    <main>
+        <header class="topbar">
+            <div>
+                <strong>Palworld Server Manager</strong>
+                <span class="version">Milestone 1</span>
+            </div>
+            <div class="safety-label">LOCALHOST ONLY</div>
+        </header>
+
+        <section class="content">
+            @Body
+        </section>
+    </main>
+</div>
+
+<div id="blazor-error-ui">
+    An unexpected UI error occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">×</a>
+</div>

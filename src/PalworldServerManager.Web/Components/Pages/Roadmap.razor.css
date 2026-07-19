@@ -1,0 +1,35 @@
+.roadmap {
+    display: grid;
+    gap: 14px;
+    margin-top: 24px;
+    max-width: 900px;
+}
+
+.roadmap article {
+    padding: 22px;
+    background: #17212b;
+    border: 1px solid #263442;
+    border-radius: 12px;
+}
+
+.roadmap article.active {
+    border-color: #43896e;
+    background: #193128;
+}
+
+.roadmap span {
+    color: #8fe0b5;
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.roadmap h2 {
+    margin: 5px 0 7px;
+}
+
+.roadmap p {
+    margin: 0;
+    color: #92a5b8;
+}
