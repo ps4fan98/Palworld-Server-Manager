@@ -13,6 +13,36 @@ internal sealed class WindowsPalworldProcessService(
     ILogger<WindowsPalworldProcessService> logger)
     : IPalworldProcessService, IDisposable
 {
+    private static readonly Action<ILogger, int, Exception?> ManagedLauncherExited =
+        LoggerMessage.Define<int>(
+            LogLevel.Warning,
+            new EventId(1001, nameof(ManagedLauncherExited)),
+            "Managed Palworld launcher exited with code {ExitCode}.");
+
+    private static readonly Action<ILogger, string, int, Exception?> PalworldStarted =
+        LoggerMessage.Define<string, int>(
+            LogLevel.Information,
+            new EventId(1002, nameof(PalworldStarted)),
+            "Started Palworld using {ExecutablePath}; launcher PID {ProcessId}.");
+
+    private static readonly Action<ILogger, Exception?> PalworldStartFailed =
+        LoggerMessage.Define(
+            LogLevel.Error,
+            new EventId(1003, nameof(PalworldStartFailed)),
+            "Failed to start Palworld.");
+
+    private static readonly Action<ILogger, string, Exception?> PalworldStopFailures =
+        LoggerMessage.Define<string>(
+            LogLevel.Error,
+            new EventId(1004, nameof(PalworldStopFailures)),
+            "One or more Palworld processes failed to stop: {Detail}");
+
+    private static readonly Action<ILogger, string, Exception?> PalworldProcessesForceStopped =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(1005, nameof(PalworldProcessesForceStopped)),
+            "Force-stopped Palworld process IDs: {ProcessIds}.");
+
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly ConcurrentQueue<ServerLogLine> _logBuffer = new();
     private Process? _managedProcess;
@@ -133,13 +163,13 @@ internal sealed class WindowsPalworldProcessService(
 
             process.Exited += (_, _) =>
             {
+                var exitCode = SafeExitCode(process);
+
                 BufferLogLine(
                     "manager",
-                    $"Managed launcher exited with code {SafeExitCode(process)}.");
+                    $"Managed launcher exited with code {exitCode}.");
 
-                logger.LogWarning(
-                    "Managed Palworld launcher exited with code {ExitCode}.",
-                    SafeExitCode(process));
+                ManagedLauncherExited(logger, exitCode, null);
             };
 
             if (!process.Start())
@@ -158,10 +188,7 @@ internal sealed class WindowsPalworldProcessService(
                 "manager",
                 $"Started PalServer.exe with launcher PID {process.Id}.");
 
-            logger.LogInformation(
-                "Started Palworld using {ExecutablePath}; launcher PID {ProcessId}.",
-                executablePath,
-                process.Id);
+            PalworldStarted(logger, executablePath, process.Id, null);
 
             return OperationResult.Ok(
                 $"Palworld launch requested successfully. Launcher PID: {process.Id}.");
@@ -171,7 +198,7 @@ internal sealed class WindowsPalworldProcessService(
             System.ComponentModel.Win32Exception or
             UnauthorizedAccessException)
         {
-            logger.LogError(exception, "Failed to start Palworld.");
+            PalworldStartFailed(logger, exception);
             BufferLogLine("manager", $"Start failed: {exception.Message}");
             return OperationResult.Fail($"Start failed: {exception.Message}");
         }
@@ -193,7 +220,7 @@ internal sealed class WindowsPalworldProcessService(
             var options = optionsMonitor.CurrentValue;
             var processes = GetRunningProcesses(options);
 
-            if (processes.Count == 0)
+            if (processes.Length == 0)
             {
                 return OperationResult.Fail("No Palworld process is currently running.");
             }
@@ -234,7 +261,7 @@ internal sealed class WindowsPalworldProcessService(
             if (failures.Count > 0)
             {
                 var detail = string.Join("; ", failures);
-                logger.LogError("One or more Palworld processes failed to stop: {Detail}", detail);
+                PalworldStopFailures(logger, detail, null);
                 BufferLogLine("manager", $"Force-stop incomplete: {detail}");
 
                 return OperationResult.Fail(
@@ -244,9 +271,7 @@ internal sealed class WindowsPalworldProcessService(
             var processList = string.Join(", ", stoppedProcessIds);
             BufferLogLine("manager", $"Force-stopped Palworld PID(s): {processList}.");
 
-            logger.LogWarning(
-                "Force-stopped Palworld process IDs: {ProcessIds}.",
-                processList);
+            PalworldProcessesForceStopped(logger, processList, null);
 
             return OperationResult.Ok(
                 $"Force-stopped Palworld process ID(s): {processList}.");
@@ -264,17 +289,23 @@ internal sealed class WindowsPalworldProcessService(
     private static Process? TryGetRunningProcess(PalworldServerOptions options)
     {
         var processes = GetRunningProcesses(options);
-        var selected = processes.FirstOrDefault();
 
-        foreach (var process in processes.Skip(1))
+        if (processes.Length == 0)
         {
-            process.Dispose();
+            return null;
+        }
+
+        var selected = processes[0];
+
+        for (var index = 1; index < processes.Length; index++)
+        {
+            processes[index].Dispose();
         }
 
         return selected;
     }
 
-    private static IReadOnlyList<Process> GetRunningProcesses(
+    private static Process[] GetRunningProcesses(
         PalworldServerOptions options)
     {
         var processesById = new Dictionary<int, Process>();
