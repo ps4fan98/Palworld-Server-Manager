@@ -3,7 +3,13 @@ param(
     [scriptblock]$DotnetCommand = {
         param([string[]]$Arguments)
 
-        & dotnet @Arguments
+        & dotnet @Arguments | Out-Host
+        $exitCode = $LASTEXITCODE
+        return $exitCode
+    },
+
+    [scriptblock]$DotnetVersionCommand = {
+        & dotnet --version
         return $LASTEXITCODE
     }
 )
@@ -22,18 +28,29 @@ function Invoke-CheckedDotnetCommand {
     )
 
     Write-Host $Description -ForegroundColor Cyan
-    $exitCode = & $DotnetCommand $Arguments
+    $exitCodeResult = @(& $DotnetCommand $Arguments)
 
+    if ($exitCodeResult.Count -ne 1 -or $exitCodeResult[0] -isnot [int]) {
+        throw "Dotnet command adapter for 'dotnet $($Arguments -join ' ')' must return exactly one integer exit code."
+    }
+
+    $exitCode = $exitCodeResult[0]
     if ($exitCode -ne 0) {
         throw "dotnet $($Arguments -join ' ') failed with exit code $exitCode."
     }
 }
 
-$versionText = (& dotnet --version)
-if ($LASTEXITCODE -ne 0) {
+$versionResult = @(& $DotnetVersionCommand)
+if ($versionResult.Count -lt 2 -or $versionResult[-1] -isnot [int]) {
+    throw "Dotnet version adapter must return version output followed by one integer exit code."
+}
+
+$versionExitCode = $versionResult[-1]
+if ($versionExitCode -ne 0) {
     throw ".NET SDK was not found. Install the .NET 10 SDK."
 }
 
+$versionText = [string]$versionResult[0]
 $major = [int]($versionText.Split(".")[0])
 if ($major -lt 10) {
     throw "The project requires .NET 10 or later. Detected: $versionText"
