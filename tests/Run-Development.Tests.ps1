@@ -17,6 +17,8 @@ BeforeAll {
     function New-TestDotnetAdapter {
         param(
             [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+            [ValidateNotNull()]
             [System.Collections.Generic.List[string]]$ObservedCommands,
 
             [string]$FailCommand,
