@@ -34,21 +34,22 @@ BeforeAll {
             [string]$BaseAddress,
 
             [Parameter(Mandatory = $true)]
-            [System.Diagnostics.Process]$Process,
-
-            [Parameter(Mandatory = $true)]
-            [System.Text.StringBuilder]$StandardOutput,
-
-            [Parameter(Mandatory = $true)]
-            [System.Text.StringBuilder]$StandardError
+            $ProcessContext
         )
 
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
         $healthUri = "$BaseAddress/api/v1/health"
 
         do {
-            if ($Process.HasExited) {
-                throw "Web process exited before health check passed. Exit code: $($Process.ExitCode). Stdout: $StandardOutput Stderr: $StandardError"
+            $process = $ProcessContext.Process
+
+            if ($process.HasExited) {
+                $process.WaitForExit()
+
+                $standardOutput = $ProcessContext.StandardOutputTask.GetAwaiter().GetResult()
+                $standardError = $ProcessContext.StandardErrorTask.GetAwaiter().GetResult()
+
+                throw "Web process exited before health check passed. Exit code: $($process.ExitCode). Stdout: $standardOutput Stderr: $standardError"
             }
 
             try {
@@ -62,7 +63,7 @@ BeforeAll {
             }
         } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-        throw "Timed out waiting for $healthUri to return HTTP 200. Stdout: $StandardOutput Stderr: $StandardError"
+        throw "Timed out waiting for $healthUri to return HTTP 200."
     }
 
     function Assert-StaticAssetResponses {
@@ -92,69 +93,52 @@ BeforeAll {
     function Start-TestProcess {
         param(
             [Parameter(Mandatory = $true)]
-            [System.Diagnostics.ProcessStartInfo]$StartInfo,
-
-            [Parameter(Mandatory = $true)]
-            [System.Text.StringBuilder]$StandardOutput,
-
-            [Parameter(Mandatory = $true)]
-            [System.Text.StringBuilder]$StandardError
+            [System.Diagnostics.ProcessStartInfo]$StartInfo
         )
 
         $process = [System.Diagnostics.Process]::new()
         $process.StartInfo = $StartInfo
-        $process.EnableRaisingEvents = $true
-
-        $outputHandler = {
-            param($Sender, $EventArgs)
-
-            if ($null -ne $EventArgs.Data) {
-                [void]$StandardOutput.AppendLine($EventArgs.Data)
-            }
-        }.GetNewClosure()
-
-        $errorHandler = {
-            param($Sender, $EventArgs)
-
-            if ($null -ne $EventArgs.Data) {
-                [void]$StandardError.AppendLine($EventArgs.Data)
-            }
-        }.GetNewClosure()
-
-        $process.add_OutputDataReceived($outputHandler)
-        $process.add_ErrorDataReceived($errorHandler)
 
         if (-not $process.Start()) {
             $process.Dispose()
             throw "Failed to start test process."
         }
 
-        $process.BeginOutputReadLine()
-        $process.BeginErrorReadLine()
-
-        return $process
+        return [pscustomobject]@{
+            Process            = $process
+            StandardOutputTask = $process.StandardOutput.ReadToEndAsync()
+            StandardErrorTask  = $process.StandardError.ReadToEndAsync()
+        }
     }
 
     function Stop-TestProcess {
         param(
-            [System.Diagnostics.Process]$Process
+            $ProcessContext
         )
 
-        if (-not $Process) {
+        if (-not $ProcessContext) {
             return
         }
 
+        $process = $ProcessContext.Process
+
         try {
-            if (-not $Process.HasExited) {
-                $Process.Kill()
-                $Process.WaitForExit(10000) | Out-Null
+            if (-not $process.HasExited) {
+                $process.Kill()
+                $process.WaitForExit(10000) | Out-Null
             }
+            else {
+                $process.WaitForExit()
+            }
+
+            [void]$ProcessContext.StandardOutputTask.GetAwaiter().GetResult()
+            [void]$ProcessContext.StandardErrorTask.GetAwaiter().GetResult()
         }
         catch [InvalidOperationException] {
-            # The process exited between inspection and termination.
+            # Process may have exited during cleanup.
         }
         finally {
-            $Process.Dispose()
+            $process.Dispose()
         }
     }
 }
@@ -163,9 +147,7 @@ Describe "Static web assets" {
     It "serves development static assets from the built Debug assembly on loopback" {
         $port = Get-FreeLoopbackPort
         $baseAddress = "http://127.0.0.1:$port"
-        $process = $null
-        $standardOutput = [System.Text.StringBuilder]::new()
-        $standardError = [System.Text.StringBuilder]::new()
+        $processContext = $null
 
         try {
             Test-Path $script:DebugAssembly | Should -BeTrue
@@ -181,21 +163,16 @@ Describe "Static web assets" {
             $startInfo.RedirectStandardError = $true
             $startInfo.UseShellExecute = $false
 
-            $process = Start-TestProcess `
-                -StartInfo $startInfo `
-                -StandardOutput $standardOutput `
-                -StandardError $standardError
+            $processContext = Start-TestProcess -StartInfo $startInfo
 
             Wait-ForHealthyManager `
                 -BaseAddress $baseAddress `
-                -Process $process `
-                -StandardOutput $standardOutput `
-                -StandardError $standardError
+                -ProcessContext $processContext
 
             Assert-StaticAssetResponses -BaseAddress $baseAddress
         }
         finally {
-            Stop-TestProcess -Process $process
+            Stop-TestProcess -ProcessContext $processContext
         }
     }
 
@@ -203,9 +180,7 @@ Describe "Static web assets" {
         $port = Get-FreeLoopbackPort
         $baseAddress = "http://127.0.0.1:$port"
         $publishDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
-        $process = $null
-        $standardOutput = [System.Text.StringBuilder]::new()
-        $standardError = [System.Text.StringBuilder]::new()
+        $processContext = $null
 
         try {
             dotnet publish $script:WebProject -c Release --no-restore --no-build -o $publishDirectory
@@ -231,21 +206,16 @@ Describe "Static web assets" {
             $startInfo.RedirectStandardError = $true
             $startInfo.UseShellExecute = $false
 
-            $process = Start-TestProcess `
-                -StartInfo $startInfo `
-                -StandardOutput $standardOutput `
-                -StandardError $standardError
+            $processContext = Start-TestProcess -StartInfo $startInfo
 
             Wait-ForHealthyManager `
                 -BaseAddress $baseAddress `
-                -Process $process `
-                -StandardOutput $standardOutput `
-                -StandardError $standardError
+                -ProcessContext $processContext
 
             Assert-StaticAssetResponses -BaseAddress $baseAddress
         }
         finally {
-            Stop-TestProcess -Process $process
+            Stop-TestProcess -ProcessContext $processContext
 
             if (Test-Path $publishDirectory) {
                 Remove-Item $publishDirectory -Recurse -Force
