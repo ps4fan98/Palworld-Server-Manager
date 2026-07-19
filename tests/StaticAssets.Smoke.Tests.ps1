@@ -2,6 +2,15 @@ BeforeAll {
     $script:RepositoryRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
     $script:WebProject = Join-Path $script:RepositoryRoot "src\PalworldServerManager.Web\PalworldServerManager.Web.csproj"
 
+    function ConvertTo-CommandLineArgument {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Value
+        )
+
+        return '"' + $Value.Replace('"', '\"') + '"'
+    }
+
     function Get-FreeLoopbackPort {
         $listener = [System.Net.Sockets.TcpListener]::new(
             [System.Net.IPAddress]::Loopback,
@@ -22,7 +31,13 @@ BeforeAll {
             [string]$BaseAddress,
 
             [Parameter(Mandatory = $true)]
-            [System.Diagnostics.Process]$Process
+            [System.Diagnostics.Process]$Process,
+
+            [Parameter(Mandatory = $true)]
+            [System.Text.StringBuilder]$StandardOutput,
+
+            [Parameter(Mandatory = $true)]
+            [System.Text.StringBuilder]$StandardError
         )
 
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
@@ -30,7 +45,7 @@ BeforeAll {
 
         do {
             if ($Process.HasExited) {
-                throw "Web process exited before health check passed. Exit code: $($Process.ExitCode)."
+                throw "Web process exited before health check passed. Exit code: $($Process.ExitCode). Stdout: $StandardOutput Stderr: $StandardError"
             }
 
             try {
@@ -44,7 +59,7 @@ BeforeAll {
             }
         } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-        throw "Timed out waiting for $healthUri to return HTTP 200."
+        throw "Timed out waiting for $healthUri to return HTTP 200. Stdout: $StandardOutput Stderr: $StandardError"
     }
 
     function Assert-StaticAssetResponses {
@@ -71,17 +86,84 @@ BeforeAll {
         }
     }
 
+    function Start-TestProcess {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.Diagnostics.ProcessStartInfo]$StartInfo,
+
+            [Parameter(Mandatory = $true)]
+            [System.Text.StringBuilder]$StandardOutput,
+
+            [Parameter(Mandatory = $true)]
+            [System.Text.StringBuilder]$StandardError
+        )
+
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $StartInfo
+        $process.EnableRaisingEvents = $true
+
+        $outputHandler = {
+            param($Sender, $EventArgs)
+
+            if ($null -ne $EventArgs.Data) {
+                [void]$StandardOutput.AppendLine($EventArgs.Data)
+            }
+        }.GetNewClosure()
+
+        $errorHandler = {
+            param($Sender, $EventArgs)
+
+            if ($null -ne $EventArgs.Data) {
+                [void]$StandardError.AppendLine($EventArgs.Data)
+            }
+        }.GetNewClosure()
+
+        $process.add_OutputDataReceived($outputHandler)
+        $process.add_ErrorDataReceived($errorHandler)
+
+        if (-not $process.Start()) {
+            $process.Dispose()
+            throw "Failed to start test process."
+        }
+
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+
+        return $process
+    }
+
     function Stop-TestProcess {
         param(
             [System.Diagnostics.Process]$Process
         )
 
-        if ($Process -and -not $Process.HasExited) {
-            $Process.Kill($true)
-            $Process.WaitForExit(10000) | Out-Null
+        if (-not $Process) {
+            return
         }
 
-        if ($Process) {
+        try {
+            try {
+                if (-not $Process.HasExited) {
+                    if ($env:OS -eq "Windows_NT") {
+                        & taskkill.exe `
+                            /PID $Process.Id `
+                            /T `
+                            /F `
+                            1>$null `
+                            2>$null
+                    }
+                    else {
+                        $Process.Kill()
+                    }
+
+                    $Process.WaitForExit(10000) | Out-Null
+                }
+            }
+            catch [InvalidOperationException] {
+                # The process can exit between the HasExited check and termination.
+            }
+        }
+        finally {
             $Process.Dispose()
         }
     }
@@ -92,29 +174,34 @@ Describe "Static web assets" {
         $port = Get-FreeLoopbackPort
         $baseAddress = "http://127.0.0.1:$port"
         $process = $null
+        $standardOutput = [System.Text.StringBuilder]::new()
+        $standardError = [System.Text.StringBuilder]::new()
 
         try {
             $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $escapedProjectPath = ConvertTo-CommandLineArgument -Value $script:WebProject
             $startInfo.FileName = "dotnet"
             $startInfo.WorkingDirectory = $script:RepositoryRoot
-            $startInfo.ArgumentList.Add("run")
-            $startInfo.ArgumentList.Add("--project")
-            $startInfo.ArgumentList.Add($script:WebProject)
-            $startInfo.ArgumentList.Add("-c")
-            $startInfo.ArgumentList.Add("Debug")
-            $startInfo.ArgumentList.Add("--no-build")
-            $startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development"
-            $startInfo.Environment["DOTNET_ENVIRONMENT"] = "Development"
-            $startInfo.Environment["Manager__ListenUrl"] = $baseAddress
-            $startInfo.Environment["ASPNETCORE_URLS"] = $baseAddress
+            $startInfo.Arguments = "run --project $escapedProjectPath -c Debug --no-build"
+            $startInfo.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Development"
+            $startInfo.EnvironmentVariables["DOTNET_ENVIRONMENT"] = "Development"
+            $startInfo.EnvironmentVariables["Manager__ListenUrl"] = $baseAddress
+            $startInfo.EnvironmentVariables["ASPNETCORE_URLS"] = $baseAddress
             $startInfo.RedirectStandardOutput = $true
             $startInfo.RedirectStandardError = $true
             $startInfo.UseShellExecute = $false
 
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            $process | Should -Not -BeNullOrEmpty
+            $process = Start-TestProcess `
+                -StartInfo $startInfo `
+                -StandardOutput $standardOutput `
+                -StandardError $standardError
 
-            Wait-ForHealthyManager -BaseAddress $baseAddress -Process $process
+            Wait-ForHealthyManager `
+                -BaseAddress $baseAddress `
+                -Process $process `
+                -StandardOutput $standardOutput `
+                -StandardError $standardError
+
             Assert-StaticAssetResponses -BaseAddress $baseAddress
         }
         finally {
@@ -127,6 +214,8 @@ Describe "Static web assets" {
         $baseAddress = "http://127.0.0.1:$port"
         $publishDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
         $process = $null
+        $standardOutput = [System.Text.StringBuilder]::new()
+        $standardError = [System.Text.StringBuilder]::new()
 
         try {
             dotnet publish $script:WebProject -c Release --no-restore --no-build -o $publishDirectory
@@ -144,18 +233,25 @@ Describe "Static web assets" {
             $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
             $startInfo.FileName = $executablePath
             $startInfo.WorkingDirectory = $publishDirectory
-            $startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production"
-            $startInfo.Environment["DOTNET_ENVIRONMENT"] = "Production"
-            $startInfo.Environment["Manager__ListenUrl"] = $baseAddress
-            $startInfo.Environment["ASPNETCORE_URLS"] = $baseAddress
+            $startInfo.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Production"
+            $startInfo.EnvironmentVariables["DOTNET_ENVIRONMENT"] = "Production"
+            $startInfo.EnvironmentVariables["Manager__ListenUrl"] = $baseAddress
+            $startInfo.EnvironmentVariables["ASPNETCORE_URLS"] = $baseAddress
             $startInfo.RedirectStandardOutput = $true
             $startInfo.RedirectStandardError = $true
             $startInfo.UseShellExecute = $false
 
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            $process | Should -Not -BeNullOrEmpty
+            $process = Start-TestProcess `
+                -StartInfo $startInfo `
+                -StandardOutput $standardOutput `
+                -StandardError $standardError
 
-            Wait-ForHealthyManager -BaseAddress $baseAddress -Process $process
+            Wait-ForHealthyManager `
+                -BaseAddress $baseAddress `
+                -Process $process `
+                -StandardOutput $standardOutput `
+                -StandardError $standardError
+
             Assert-StaticAssetResponses -BaseAddress $baseAddress
         }
         finally {
