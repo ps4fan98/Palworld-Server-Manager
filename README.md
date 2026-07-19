@@ -103,3 +103,31 @@ Milestone 2 will add:
 4. Graceful save and shutdown
 5. Human-readable server metrics and player data
 6. Configuration parser and revision history
+
+## First-run owner authentication
+
+On a new manager database, opening the local management UI at
+`http://127.0.0.1:8213` redirects to `/setup`. The setup flow creates the single
+owner account for this phase with a username and Identity-validated password;
+there are no default credentials, hidden reset query parameters, fallback
+passwords, or public registration.
+
+After setup, owners sign in at `/login`. Signing out uses a POST-only logout
+form that validates antiforgery data, clears the authentication cookie, and
+returns the browser to `/login`. Password reset, email recovery, MFA, and
+multiple-user administration are not available in this phase, so losing the
+owner password requires restoring from a trusted backup or a future recovery
+feature.
+
+Authentication data is stored by ASP.NET Core Identity in the existing SQLite
+manager database alongside the manager audit data. Startup continues to use the
+repository's `EnsureCreated` database initialization approach so new databases
+receive all current tables and existing Milestone 1 databases are not deleted or
+recreated.
+
+The security boundary remains local-only: the default listen URL is still
+`http://127.0.0.1:8213`, and authentication alone is not sufficient for LAN or
+WAN exposure. The dedicated owner cookie is HTTP-only, SameSite-protected, has a
+finite sliding expiration, and is compatible with localhost HTTP development.
+When a future HTTPS milestone enables network exposure, the cookie secure policy
+must be changed to HTTPS-only before LAN use.

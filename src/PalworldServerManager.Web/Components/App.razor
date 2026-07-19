@@ -11,7 +11,9 @@
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <CascadingAuthenticationState>
+        <Routes @rendermode="InteractiveServer" />
+    </CascadingAuthenticationState>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 </html>

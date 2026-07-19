@@ -4,4 +4,7 @@
     <Project Path="src/PalworldServerManager.Infrastructure/PalworldServerManager.Infrastructure.csproj" />
     <Project Path="src/PalworldServerManager.Web/PalworldServerManager.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PalworldServerManager.Web.Tests/PalworldServerManager.Web.Tests.csproj" />
+  </Folder>
 </Solution>

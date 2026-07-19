@@ -68,3 +68,23 @@ main {
         padding: 20px;
     }
 }
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.owner-name {
+    color: #d9e4ee;
+    font-weight: 700;
+}
+
+.logout-button {
+    border: 1px solid #3b4a59;
+    border-radius: 999px;
+    padding: 7px 10px;
+    background: #202b36;
+    color: #d9e4ee;
+    cursor: pointer;
+}

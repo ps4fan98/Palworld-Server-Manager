@@ -48,6 +48,9 @@ jobs:
       - name: Build Debug
         run: dotnet build .\PalworldServerManager.slnx -c Debug --no-restore
 
+      - name: Test Release
+        run: dotnet test .\PalworldServerManager.slnx -c Release --no-build
+
       - name: Install Pester
         shell: pwsh
         run: |

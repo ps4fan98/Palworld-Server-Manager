@@ -11,7 +11,18 @@
                 <strong>Palworld Server Manager</strong>
                 <span class="version">Milestone 1</span>
             </div>
-            <div class="safety-label">LOCALHOST ONLY</div>
+            <div class="topbar-actions">
+                <AuthorizeView>
+                    <Authorized>
+                        <span class="owner-name">@context.User.Identity?.Name</span>
+                        <form method="post" action="/logout">
+                            <AntiforgeryToken />
+                            <button class="logout-button" type="submit">Sign out</button>
+                        </form>
+                    </Authorized>
+                </AuthorizeView>
+                <div class="safety-label">LOCALHOST ONLY</div>
+            </div>
         </header>
 
         <section class="content">
