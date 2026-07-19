@@ -1,87 +1,89 @@
-$script:RepositoryRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$script:WebProject = Join-Path $script:RepositoryRoot "src\PalworldServerManager.Web\PalworldServerManager.Web.csproj"
+BeforeAll {
+    $script:RepositoryRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+    $script:WebProject = Join-Path $script:RepositoryRoot "src\PalworldServerManager.Web\PalworldServerManager.Web.csproj"
 
-function Get-FreeLoopbackPort {
-    $listener = [System.Net.Sockets.TcpListener]::new(
-        [System.Net.IPAddress]::Loopback,
-        0)
-
-    try {
-        $listener.Start()
-        return $listener.LocalEndpoint.Port
-    }
-    finally {
-        $listener.Stop()
-    }
-}
-
-function Wait-ForHealthyManager {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$BaseAddress,
-
-        [Parameter(Mandatory = $true)]
-        [System.Diagnostics.Process]$Process
-    )
-
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
-    $healthUri = "$BaseAddress/api/v1/health"
-
-    do {
-        if ($Process.HasExited) {
-            throw "Web process exited before health check passed. Exit code: $($Process.ExitCode)."
-        }
+    function Get-FreeLoopbackPort {
+        $listener = [System.Net.Sockets.TcpListener]::new(
+            [System.Net.IPAddress]::Loopback,
+            0)
 
         try {
-            $response = Invoke-WebRequest -Uri $healthUri -UseBasicParsing -TimeoutSec 2
-            if ($response.StatusCode -eq 200) {
-                return
+            $listener.Start()
+            return $listener.LocalEndpoint.Port
+        }
+        finally {
+            $listener.Stop()
+        }
+    }
+
+    function Wait-ForHealthyManager {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$BaseAddress,
+
+            [Parameter(Mandatory = $true)]
+            [System.Diagnostics.Process]$Process
+        )
+
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(45)
+        $healthUri = "$BaseAddress/api/v1/health"
+
+        do {
+            if ($Process.HasExited) {
+                throw "Web process exited before health check passed. Exit code: $($Process.ExitCode)."
             }
-        }
-        catch {
-            Start-Sleep -Milliseconds 500
-        }
-    } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-    throw "Timed out waiting for $healthUri to return HTTP 200."
-}
+            try {
+                $response = Invoke-WebRequest -Uri $healthUri -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) {
+                    return
+                }
+            }
+            catch {
+                Start-Sleep -Milliseconds 500
+            }
+        } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-function Assert-StaticAssetResponses {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$BaseAddress
-    )
-
-    $expectations = @(
-        @{ Path = "/app.css"; ContentType = "text/css" },
-        @{ Path = "/PalworldServerManager.Web.styles.css"; ContentType = "text/css" },
-        @{ Path = "/_framework/blazor.web.js"; ContentType = "javascript" },
-        @{ Path = "/api/v1/health"; ContentType = "application/json" }
-    )
-
-    foreach ($expectation in $expectations) {
-        $response = Invoke-WebRequest `
-            -Uri "$BaseAddress$($expectation.Path)" `
-            -UseBasicParsing `
-            -TimeoutSec 10
-
-        $response.StatusCode | Should -Be 200
-        $response.Headers["Content-Type"] | Should -Match $expectation.ContentType
-    }
-}
-
-function Stop-TestProcess {
-    param(
-        [System.Diagnostics.Process]$Process
-    )
-
-    if ($Process -and -not $Process.HasExited) {
-        $Process.Kill($true)
-        $Process.WaitForExit(10000) | Out-Null
+        throw "Timed out waiting for $healthUri to return HTTP 200."
     }
 
-    if ($Process) {
-        $Process.Dispose()
+    function Assert-StaticAssetResponses {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$BaseAddress
+        )
+
+        $expectations = @(
+            @{ Path = "/app.css"; ContentType = "text/css" },
+            @{ Path = "/PalworldServerManager.Web.styles.css"; ContentType = "text/css" },
+            @{ Path = "/_framework/blazor.web.js"; ContentType = "javascript" },
+            @{ Path = "/api/v1/health"; ContentType = "application/json" }
+        )
+
+        foreach ($expectation in $expectations) {
+            $response = Invoke-WebRequest `
+                -Uri "$BaseAddress$($expectation.Path)" `
+                -UseBasicParsing `
+                -TimeoutSec 10
+
+            $response.StatusCode | Should -Be 200
+            $response.Headers["Content-Type"] | Should -Match $expectation.ContentType
+        }
+    }
+
+    function Stop-TestProcess {
+        param(
+            [System.Diagnostics.Process]$Process
+        )
+
+        if ($Process -and -not $Process.HasExited) {
+            $Process.Kill($true)
+            $Process.WaitForExit(10000) | Out-Null
+        }
+
+        if ($Process) {
+            $Process.Dispose()
+        }
     }
 }
 

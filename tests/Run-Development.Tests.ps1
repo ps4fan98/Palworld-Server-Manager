@@ -1,14 +1,18 @@
-$script:RunDevelopmentScript = Join-Path $PSScriptRoot "..\scripts\Run-Development.ps1"
+BeforeAll {
+    $script:RunDevelopmentScript = Join-Path `
+        $PSScriptRoot `
+        "..\scripts\Run-Development.ps1"
 
-function Invoke-RunDevelopmentScript {
-    param(
-        [Parameter(Mandatory = $true)]
-        [scriptblock]$DotnetCommand
-    )
+    function Invoke-RunDevelopmentScript {
+        param(
+            [Parameter(Mandatory = $true)]
+            [scriptblock]$DotnetCommand
+        )
 
-    & $script:RunDevelopmentScript `
-        -DotnetVersionCommand { "10.0.100"; 0 } `
-        -DotnetCommand $DotnetCommand
+        & $script:RunDevelopmentScript `
+            -DotnetVersionCommand { "10.0.100"; 0 } `
+            -DotnetCommand $DotnetCommand
+    }
 }
 
 Describe "Run-Development.ps1" {

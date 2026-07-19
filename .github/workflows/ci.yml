@@ -50,12 +50,17 @@ jobs:
 
       - name: Install Pester
         shell: pwsh
-        run: Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+        run: |
+          Install-Module Pester `
+            -RequiredVersion 6.0.1 `
+            -Scope CurrentUser `
+            -Force `
+            -SkipPublisherCheck
 
       - name: Run PowerShell behavioral tests
         shell: pwsh
-        run: Invoke-Pester .\tests\Run-Development.Tests.ps1
+        run: Invoke-Pester .\tests\Run-Development.Tests.ps1 -Output Detailed
 
       - name: Run static asset smoke tests
         shell: pwsh
-        run: Invoke-Pester .\tests\StaticAssets.Smoke.Tests.ps1
+        run: Invoke-Pester .\tests\StaticAssets.Smoke.Tests.ps1 -Output Detailed
