@@ -36,6 +36,8 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseAntiforgery();
 
+app.MapStaticAssets();
+
 app.MapGet("/api/v1/health", () => Results.Ok(new
 {
     status = "healthy",
