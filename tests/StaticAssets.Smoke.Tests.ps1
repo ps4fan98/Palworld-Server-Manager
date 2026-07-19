@@ -1,6 +1,9 @@
 BeforeAll {
     $script:RepositoryRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
     $script:WebProject = Join-Path $script:RepositoryRoot "src\PalworldServerManager.Web\PalworldServerManager.Web.csproj"
+    $script:DebugAssembly = Join-Path `
+        $script:RepositoryRoot `
+        "src\PalworldServerManager.Web\bin\Debug\net10.0\PalworldServerManager.Web.dll"
 
     function ConvertTo-CommandLineArgument {
         param(
@@ -142,26 +145,13 @@ BeforeAll {
         }
 
         try {
-            try {
-                if (-not $Process.HasExited) {
-                    if ($env:OS -eq "Windows_NT") {
-                        & taskkill.exe `
-                            /PID $Process.Id `
-                            /T `
-                            /F `
-                            1>$null `
-                            2>$null
-                    }
-                    else {
-                        $Process.Kill()
-                    }
-
-                    $Process.WaitForExit(10000) | Out-Null
-                }
+            if (-not $Process.HasExited) {
+                $Process.Kill()
+                $Process.WaitForExit(10000) | Out-Null
             }
-            catch [InvalidOperationException] {
-                # The process can exit between the HasExited check and termination.
-            }
+        }
+        catch [InvalidOperationException] {
+            # The process exited between inspection and termination.
         }
         finally {
             $Process.Dispose()
@@ -170,7 +160,7 @@ BeforeAll {
 }
 
 Describe "Static web assets" {
-    It "serves development static assets from dotnet run on loopback" {
+    It "serves development static assets from the built Debug assembly on loopback" {
         $port = Get-FreeLoopbackPort
         $baseAddress = "http://127.0.0.1:$port"
         $process = $null
@@ -178,11 +168,11 @@ Describe "Static web assets" {
         $standardError = [System.Text.StringBuilder]::new()
 
         try {
+            Test-Path $script:DebugAssembly | Should -BeTrue
             $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-            $escapedProjectPath = ConvertTo-CommandLineArgument -Value $script:WebProject
             $startInfo.FileName = "dotnet"
-            $startInfo.WorkingDirectory = $script:RepositoryRoot
-            $startInfo.Arguments = "run --project $escapedProjectPath -c Debug --no-build"
+            $startInfo.WorkingDirectory = Split-Path -Parent $script:WebProject
+            $startInfo.Arguments = ConvertTo-CommandLineArgument -Value $script:DebugAssembly
             $startInfo.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Development"
             $startInfo.EnvironmentVariables["DOTNET_ENVIRONMENT"] = "Development"
             $startInfo.EnvironmentVariables["Manager__ListenUrl"] = $baseAddress
