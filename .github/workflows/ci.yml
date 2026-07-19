@@ -52,7 +52,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module Pester `
-            -RequiredVersion 6.0.1 `
+            -RequiredVersion 6.0.0 `
             -Scope CurrentUser `
             -Force `
             -SkipPublisherCheck
