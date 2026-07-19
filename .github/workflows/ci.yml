@@ -42,5 +42,25 @@ jobs:
       - name: Audit NuGet dependencies
         run: dotnet list .\PalworldServerManager.slnx package --vulnerable --include-transitive --no-restore
 
-      - name: Build
+      - name: Build Release
         run: dotnet build .\PalworldServerManager.slnx -c Release --no-restore
+
+      - name: Build Debug
+        run: dotnet build .\PalworldServerManager.slnx -c Debug --no-restore
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Install-Module Pester `
+            -RequiredVersion 6.0.0 `
+            -Scope CurrentUser `
+            -Force `
+            -SkipPublisherCheck
+
+      - name: Run PowerShell behavioral tests
+        shell: pwsh
+        run: Invoke-Pester .\tests\Run-Development.Tests.ps1 -Output Detailed
+
+      - name: Run static asset smoke tests
+        shell: pwsh
+        run: Invoke-Pester .\tests\StaticAssets.Smoke.Tests.ps1 -Output Detailed
