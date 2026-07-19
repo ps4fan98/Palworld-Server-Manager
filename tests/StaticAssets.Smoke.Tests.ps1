@@ -46,8 +46,47 @@ function Wait-ForHealthyManager {
     throw "Timed out waiting for $healthUri to return HTTP 200."
 }
 
+function Assert-StaticAssetResponses {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BaseAddress
+    )
+
+    $expectations = @(
+        @{ Path = "/app.css"; ContentType = "text/css" },
+        @{ Path = "/PalworldServerManager.Web.styles.css"; ContentType = "text/css" },
+        @{ Path = "/_framework/blazor.web.js"; ContentType = "javascript" },
+        @{ Path = "/api/v1/health"; ContentType = "application/json" }
+    )
+
+    foreach ($expectation in $expectations) {
+        $response = Invoke-WebRequest `
+            -Uri "$BaseAddress$($expectation.Path)" `
+            -UseBasicParsing `
+            -TimeoutSec 10
+
+        $response.StatusCode | Should -Be 200
+        $response.Headers["Content-Type"] | Should -Match $expectation.ContentType
+    }
+}
+
+function Stop-TestProcess {
+    param(
+        [System.Diagnostics.Process]$Process
+    )
+
+    if ($Process -and -not $Process.HasExited) {
+        $Process.Kill($true)
+        $Process.WaitForExit(10000) | Out-Null
+    }
+
+    if ($Process) {
+        $Process.Dispose()
+    }
+}
+
 Describe "Static web assets" {
-    It "serves CSS, Blazor framework assets, and health from loopback" {
+    It "serves development static assets from dotnet run on loopback" {
         $port = Get-FreeLoopbackPort
         $baseAddress = "http://127.0.0.1:$port"
         $process = $null
@@ -60,8 +99,10 @@ Describe "Static web assets" {
             $startInfo.ArgumentList.Add("--project")
             $startInfo.ArgumentList.Add($script:WebProject)
             $startInfo.ArgumentList.Add("-c")
-            $startInfo.ArgumentList.Add("Release")
+            $startInfo.ArgumentList.Add("Debug")
             $startInfo.ArgumentList.Add("--no-build")
+            $startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development"
+            $startInfo.Environment["DOTNET_ENVIRONMENT"] = "Development"
             $startInfo.Environment["Manager__ListenUrl"] = $baseAddress
             $startInfo.Environment["ASPNETCORE_URLS"] = $baseAddress
             $startInfo.RedirectStandardOutput = $true
@@ -72,32 +113,54 @@ Describe "Static web assets" {
             $process | Should -Not -BeNullOrEmpty
 
             Wait-ForHealthyManager -BaseAddress $baseAddress -Process $process
-
-            $expectations = @(
-                @{ Path = "/app.css"; ContentType = "text/css" },
-                @{ Path = "/PalworldServerManager.Web.styles.css"; ContentType = "text/css" },
-                @{ Path = "/_framework/blazor.web.js"; ContentType = "javascript" },
-                @{ Path = "/api/v1/health"; ContentType = "application/json" }
-            )
-
-            foreach ($expectation in $expectations) {
-                $response = Invoke-WebRequest `
-                    -Uri "$baseAddress$($expectation.Path)" `
-                    -UseBasicParsing `
-                    -TimeoutSec 10
-
-                $response.StatusCode | Should -Be 200
-                $response.Headers["Content-Type"] | Should -Match $expectation.ContentType
-            }
+            Assert-StaticAssetResponses -BaseAddress $baseAddress
         }
         finally {
-            if ($process -and -not $process.HasExited) {
-                $process.Kill($true)
-                $process.WaitForExit(10000) | Out-Null
+            Stop-TestProcess -Process $process
+        }
+    }
+
+    It "serves production static assets from published output on loopback" {
+        $port = Get-FreeLoopbackPort
+        $baseAddress = "http://127.0.0.1:$port"
+        $publishDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
+        $process = $null
+
+        try {
+            dotnet publish $script:WebProject -c Release --no-restore --no-build -o $publishDirectory
+            if ($LASTEXITCODE -ne 0) {
+                throw "dotnet publish failed with exit code $LASTEXITCODE."
             }
 
-            if ($process) {
-                $process.Dispose()
+            $executablePath = if ($IsWindows) {
+                Join-Path $publishDirectory "PalworldServerManager.Web.exe"
+            }
+            else {
+                Join-Path $publishDirectory "PalworldServerManager.Web"
+            }
+
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = $executablePath
+            $startInfo.WorkingDirectory = $publishDirectory
+            $startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production"
+            $startInfo.Environment["DOTNET_ENVIRONMENT"] = "Production"
+            $startInfo.Environment["Manager__ListenUrl"] = $baseAddress
+            $startInfo.Environment["ASPNETCORE_URLS"] = $baseAddress
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $startInfo.UseShellExecute = $false
+
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            $process | Should -Not -BeNullOrEmpty
+
+            Wait-ForHealthyManager -BaseAddress $baseAddress -Process $process
+            Assert-StaticAssetResponses -BaseAddress $baseAddress
+        }
+        finally {
+            Stop-TestProcess -Process $process
+
+            if (Test-Path $publishDirectory) {
+                Remove-Item $publishDirectory -Recurse -Force
             }
         }
     }

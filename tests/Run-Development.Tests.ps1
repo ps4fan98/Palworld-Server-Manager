@@ -106,6 +106,45 @@ Describe "Run-Development.ps1" {
         } | Should -Throw "*must return exactly one integer exit code*"
     }
 
+
+    It "sets and restores Development environment variables while running" {
+        $previousAspNetEnvironment = $env:ASPNETCORE_ENVIRONMENT
+        $previousDotnetEnvironment = $env:DOTNET_ENVIRONMENT
+        $env:ASPNETCORE_ENVIRONMENT = "Staging"
+        Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
+
+        try {
+            Invoke-RunDevelopmentScript -DotnetCommand {
+                param([string[]]$Arguments)
+
+                if ($Arguments[0] -eq "run") {
+                    $env:ASPNETCORE_ENVIRONMENT | Should -Be "Development"
+                    $env:DOTNET_ENVIRONMENT | Should -Be "Development"
+                }
+
+                return 0
+            }
+
+            $env:ASPNETCORE_ENVIRONMENT | Should -Be "Staging"
+            Test-Path Env:DOTNET_ENVIRONMENT | Should -BeFalse
+        }
+        finally {
+            if ($null -eq $previousAspNetEnvironment) {
+                Remove-Item Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:ASPNETCORE_ENVIRONMENT = $previousAspNetEnvironment
+            }
+
+            if ($null -eq $previousDotnetEnvironment) {
+                Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:DOTNET_ENVIRONMENT = $previousDotnetEnvironment
+            }
+        }
+    }
+
     It "keeps the localhost-only development URL" {
         $content = Get-Content -Raw -Path $script:RunDevelopmentScript
 

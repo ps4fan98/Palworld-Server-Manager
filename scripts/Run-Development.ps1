@@ -80,10 +80,33 @@ Write-Host "Open http://127.0.0.1:8213" -ForegroundColor Yellow
 Write-Host "Press Ctrl+C to stop the manager." -ForegroundColor DarkGray
 Write-Host ""
 
-Invoke-CheckedDotnetCommand `
-    -Description "Running..." `
-    -Arguments @(
-        "run",
-        "--project",
-        ".\src\PalworldServerManager.Web\PalworldServerManager.Web.csproj",
-        "--no-build")
+$previousAspNetEnvironment = $env:ASPNETCORE_ENVIRONMENT
+$previousDotnetEnvironment = $env:DOTNET_ENVIRONMENT
+
+try {
+    $env:ASPNETCORE_ENVIRONMENT = "Development"
+    $env:DOTNET_ENVIRONMENT = "Development"
+
+    Invoke-CheckedDotnetCommand `
+        -Description "Running..." `
+        -Arguments @(
+            "run",
+            "--project",
+            ".\src\PalworldServerManager.Web\PalworldServerManager.Web.csproj",
+            "--no-build")
+}
+finally {
+    if ($null -eq $previousAspNetEnvironment) {
+        Remove-Item Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:ASPNETCORE_ENVIRONMENT = $previousAspNetEnvironment
+    }
+
+    if ($null -eq $previousDotnetEnvironment) {
+        Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:DOTNET_ENVIRONMENT = $previousDotnetEnvironment
+    }
+}
