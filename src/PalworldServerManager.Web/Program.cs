@@ -115,7 +115,7 @@ app.MapPost("/setup", async (
     var confirmation = form["ConfirmPassword"].ToString();
     if (password != confirmation)
     {
-        return Results.Content(AuthPage("First-run owner setup", "/setup", null, "Create owner", "Password confirmation does not match.", true), "text/html", statusCode: 400);
+        return Results.Content(AuthPage(http, antiforgery, "First-run owner setup", "/setup", "Create owner", "Password confirmation does not match.", true), "text/html", statusCode: 400);
     }
 
     await setupGate.WaitAsync();
@@ -136,7 +136,7 @@ app.MapPost("/setup", async (
         if (!result.Succeeded)
         {
             var message = string.Join(" ", result.Errors.Select(error => WebUtility.HtmlEncode(error.Description)));
-            return Results.Content(AuthPage("First-run owner setup", "/setup", null, "Create owner", message, true), "text/html", statusCode: 400);
+            return Results.Content(AuthPage(http, antiforgery, "First-run owner setup", "/setup", "Create owner", message, true), "text/html", statusCode: 400);
         }
 
         await users.AddToRoleAsync(user, "Owner");
@@ -182,14 +182,14 @@ app.MapPost("/login", async (
     if (user?.IsEnabled != true)
     {
         await audit.WriteAsync("auth.login-failure", "failure", $"username={username}; category=invalid; sourceIp={http.Connection.RemoteIpAddress}", "anonymous");
-        return Results.Content(AuthPage("Owner login", "/login", null, "Sign in", generic, returnUrl: returnUrl), "text/html", statusCode: 400);
+        return Results.Content(AuthPage(http, antiforgery, "Owner login", "/login", "Sign in", generic, returnUrl: returnUrl), "text/html", statusCode: 400);
     }
 
     var result = await signIn.PasswordSignInAsync(user, form["Password"].ToString(), isPersistent: false, lockoutOnFailure: true);
     if (!result.Succeeded)
     {
         await audit.WriteAsync(result.IsLockedOut ? "auth.account-locked" : "auth.login-failure", "failure", $"username={username}; category={(result.IsLockedOut ? "locked" : "invalid")}; sourceIp={http.Connection.RemoteIpAddress}", "anonymous");
-        return Results.Content(AuthPage("Owner login", "/login", null, "Sign in", generic, returnUrl: returnUrl), "text/html", statusCode: 400);
+        return Results.Content(AuthPage(http, antiforgery, "Owner login", "/login", "Sign in", generic, returnUrl: returnUrl), "text/html", statusCode: 400);
     }
 
     user.LastSuccessfulLoginAtUtc = DateTimeOffset.UtcNow;
@@ -268,6 +268,9 @@ static string? SafeReturnUrl(string? returnUrl) =>
     !string.IsNullOrWhiteSpace(returnUrl) && Uri.TryCreate(returnUrl, UriKind.Relative, out var uri) && !returnUrl.StartsWith("//", StringComparison.Ordinal)
         ? uri.ToString()
         : null;
+
+static string AuthPage(HttpContext http, IAntiforgery antiforgery, string title, string action, string button, string? error = null, bool includeConfirmation = false, string? returnUrl = null) =>
+    AuthPage(title, action, antiforgery.GetAndStoreTokens(http).RequestToken, button, error, includeConfirmation, returnUrl);
 
 static string AuthPage(string title, string action, string? token, string button, string? error = null, bool includeConfirmation = false, string? returnUrl = null) =>
     $$"""
