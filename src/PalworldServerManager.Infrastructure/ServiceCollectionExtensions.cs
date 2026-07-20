@@ -26,7 +26,7 @@ public static class ServiceCollectionExtensions
                 "Palworld:ExecutableRelativePath is required.")
             .ValidateOnStart();
 
-        var dataRoot = GetDataRoot(environment);
+        var dataRoot = GetDataRoot(configuration, environment);
         Directory.CreateDirectory(dataRoot);
 
         var paths = new ManagerPaths(dataRoot);
@@ -58,11 +58,17 @@ public static class ServiceCollectionExtensions
         await using var dbContext =
             await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+        await ManagerSqliteSchemaUpgrader.UpgradeAsync(dbContext, cancellationToken);
     }
 
-    private static string GetDataRoot(IHostEnvironment environment)
+    private static string GetDataRoot(IConfiguration configuration, IHostEnvironment environment)
     {
+        var configuredDataRoot = configuration["Manager:DataRoot"];
+        if (!string.IsNullOrWhiteSpace(configuredDataRoot))
+        {
+            return Path.GetFullPath(configuredDataRoot);
+        }
+
         if (OperatingSystem.IsWindows())
         {
             var commonApplicationData =
