@@ -9,16 +9,16 @@ public sealed class ManagerDbContext(DbContextOptions<ManagerDbContext> options)
 {
     public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder builder)
     {
-        base.OnModelCreating(modelBuilder);
+        base.OnModelCreating(builder);
 
-        var owner = modelBuilder.Entity<OwnerUser>();
+        var owner = builder.Entity<OwnerUser>();
         owner.Property(user => user.CreatedAtUtc).IsRequired();
         owner.Property(user => user.IsEnabled).IsRequired();
         owner.HasIndex(user => user.NormalizedUserName).IsUnique();
 
-        var audit = modelBuilder.Entity<AuditRecord>();
+        var audit = builder.Entity<AuditRecord>();
 
         audit.HasKey(record => record.Id);
         audit.Property(record => record.Actor).HasMaxLength(200).IsRequired();
