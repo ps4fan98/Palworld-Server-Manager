@@ -248,7 +248,9 @@ app.MapRazorComponents<App>()
 
 app.Run();
 
-static Task ApiStatusOrRedirect(RedirectContext<CookieAuthenticationOptions> context, int statusCode)
+static Task ApiStatusOrRedirect(
+    Microsoft.AspNetCore.Authentication.RedirectContext<CookieAuthenticationOptions> context,
+    int statusCode)
 {
     if (context.Request.Path.StartsWithSegments("/api"))
     {
