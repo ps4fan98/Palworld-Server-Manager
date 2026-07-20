@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -37,7 +38,7 @@ public sealed class AuthenticationFlowTests
 
     private sealed class ManagerFactory : WebApplicationFactory<Program>
     {
-        protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseContentRoot(Directory.GetCurrentDirectory());
             builder.UseEnvironment("Development");
